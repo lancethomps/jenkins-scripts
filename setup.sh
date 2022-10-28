@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
 ################################################################### SETUP ########################################################################
 S="${BASH_SOURCE[0]}" && while [ -h "$S" ]; do D="$(cd -P "$(dirname "$S")" && pwd)" && S="$(readlink "$S")" && [[ $S != /* ]] && S="$D/$S"; done || true && _SCRIPT_DIR="$(cd -P "$(dirname "$S")" && pwd)" && unset S D
+# shellcheck source=./dotfiles/bin/.common_copy.sh
+source "${_SCRIPT_DIR}/dotfiles/bin/.common_copy.sh" || exit 1
 ##################################################################################################################################################
-
-function log_and_run() {
-  echo "$*" >&2
-  echo '--------------------------------------------------'
-  "$@"
-}
 
 function install_brew() {
   BREW_FORMULAS=(
@@ -16,6 +12,7 @@ function install_brew() {
     gawk
     gnu-sed
     pcre
+    realpath
   )
 
   if ! command -v jq >/dev/null 2>&1; then
