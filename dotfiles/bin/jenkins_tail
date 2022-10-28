@@ -1,0 +1,76 @@
+#!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
+# Originally found through https://gist.github.com/chirauki/e16a7e37e217ce0a345a122dc09bbac1
+
+import argparse
+import logging
+import sys
+import time
+
+from ltpylib import strings
+from ltpylib.jenkins_api import create_default_jenkins_api, JenkinsApi
+from ltpylib.opts import BaseArgs, create_default_arg_parser, parse_args_and_init_others
+from ltpylib.requests_helper import maybe_throw
+
+
+class ScriptArgs(BaseArgs):
+
+  def __init__(self, args: argparse.Namespace):
+    super().__init__(args)
+
+    self.build_url: str = args.build_url.removesuffix("/")
+    self.sleep_time: float = args.sleep_time
+
+    self.api: JenkinsApi = create_default_jenkins_api()
+    self.log_text_url: str = self.api.url(f"{self.build_url}/logText/progressiveText")
+
+
+def main():
+  args = _parse_args()
+
+  start = 0
+  while True:
+    # noinspection PyBroadException
+    try:
+      response = maybe_throw(args.api.session.get(f"{args.log_text_url}?start={start}"))
+    except:
+      response = maybe_throw(args.api.session.get(f"{args.log_text_url}?start={start}"))
+
+    if response.text:
+      sys.stdout.write(response.text)
+
+    x_text_size = response.headers.get("X-Text-Size")
+    if not x_text_size:
+      logging.debug("Missing X-Text-Size header")
+      break
+
+    next_start = int(x_text_size)
+    if start == next_start:
+      logging.debug("next_start == start")
+      time.sleep(args.sleep_time)
+      continue
+
+    start = next_start
+
+    x_more_data = response.headers.get("X-More-Data")
+    if not x_more_data or not strings.convert_to_bool(x_more_data, unknown_value=False):
+      logging.debug("Missing X-More-Data header")
+      break
+
+    time.sleep(args.sleep_time)
+
+
+def _parse_args() -> ScriptArgs:
+  arg_parser = create_default_arg_parser()
+
+  arg_parser.add_argument("--sleep-time", type=float, default=1.0)
+  arg_parser.add_argument("build_url")
+
+  return ScriptArgs(parse_args_and_init_others(arg_parser))
+
+
+if __name__ == "__main__":
+  try:
+    main()
+  except KeyboardInterrupt:
+    exit(130)

@@ -1,0 +1,15 @@
+name: Build
+on: [ push ]
+jobs:
+  build:
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      matrix:
+        config:
+        - { os: macos-latest }
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: asdf-vm/actions/install@v1
+    - run: brew install bash pcre
+    - run: make ci
