@@ -9,7 +9,7 @@ set -o errexit -o errtrace -o nounset
 jenkinsfile="$1"
 shift
 
-# shellcheck source=../.dotfiles/.jenkins_script_setup.sh
+# shellcheck disable=SC1091
 source "${DOTFILES}/.jenkins_script_setup.sh"
 init_jenkins_vars "$@"
 
