@@ -9,19 +9,7 @@ set -o errexit -o errtrace -o nounset
 ##################################################################################################################################################
 
 function main() {
-  local jenkinsfile="$1" curl_args
-  shift
-
-  init_jenkins_vars "$@"
-
-  curl_args=(
-    --silent
-    -X POST
-    -F "jenkinsfile=<${jenkinsfile}"
-    "https://${JENKINS_HOST}/pipeline-model-converter/validate"
-  )
-
-  log_and_run jenkins_curl "${curl_args[@]}"
+  get_job_url_from_repo "$@"
 }
 
 main "$@"

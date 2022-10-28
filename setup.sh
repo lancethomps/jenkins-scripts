@@ -19,8 +19,19 @@ function install_brew() {
     BREW_FORMULAS+=(jq)
   fi
 
+  if ! command -v yq >/dev/null 2>&1; then
+    BREW_FORMULAS+=(yq)
+  fi
+
   echo "Installing required Homebrew formulas..."
   log_and_run brew install "${BREW_FORMULAS[@]}"
+}
+
+function install_other_scripts() {
+  if ! command -v git-prs-latest-number >/dev/null 2>&1; then
+    echo "It is highly recommended to also setup https://github.com/lancethomps/git-scripts."
+  fi
+  return 0
 }
 
 function install_pip() {
@@ -34,6 +45,7 @@ function finish_setup() {
 
 function main() {
   install_brew
+  install_other_scripts
   install_pip
   finish_setup
 }

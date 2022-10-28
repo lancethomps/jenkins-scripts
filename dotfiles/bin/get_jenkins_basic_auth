@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 ################################################################### SETUP ########################################################################
-shopt -s expand_aliases
 set -o errexit -o errtrace -o nounset
 ##################################################################################################################################################
-# shellcheck source=./.common_copy.sh
-source "${_SCRIPT_DIR}/.common_copy.sh"
+
+if test "${1:-${JENKINS_HOST-}}" = 'localhost:8443'; then
+  echo 'admin:admin'
+else
+  echo "${JENKINS_USER_ID}:${JENKINS_API_TOKEN}"
+fi
