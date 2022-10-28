@@ -97,7 +97,7 @@ function get_job_name_from_url() {
     echo "${parent_name,,}"
   else
     if echo "${parent_name,,}" | grep -q '%2f'; then
-      parent_name="$(url_decode_py "${parent_name,,}" | sed -E 's/\//\/job\//g')"
+      parent_name="$(_url_decode_old "${parent_name,,}" | sed -E 's/\//\/job\//g')"
     fi
     echo "${parent_name,,}/job/${child_name}"
   fi
@@ -208,7 +208,7 @@ function _get_jenkins_host() {
 }
 
 function _get_yaml_prop() {
-  { yq -r --exit-status ".${2}" "$1" || echo "${3-}"; } | envsubst
+  { yq -r --exit-status ".[\"${2}\"] | select(. != null)" "$1" || echo "${3-}"; } | envsubst
 }
 
 function _url_decode_old() {
