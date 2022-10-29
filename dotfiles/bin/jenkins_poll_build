@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+################################################################### SETUP ########################################################################
+if ! _SCRIPT_DIR="$(get_script_dir "${BASH_SOURCE[0]}")"; then echo "Error while running: _SCRIPT_DIR=\"\$(get_script_dir \"${BASH_SOURCE[0]}\")\"" && exit 1; fi
+# shellcheck source=./.common_copy.sh
+source "${_SCRIPT_DIR}/.common_copy.sh" || exit 1
+set -o errexit -o errtrace -o nounset
+##################################################################################################################################################
+
+################################################################### USAGE ########################################################################
+_SCRIPT_NAME="$(basename "$0")"
+
+function _usage() {
+  local SYNOP_INDENT
+  SYNOP_INDENT="$(head -c "$(echo -n "${_SCRIPT_NAME}" | wc -c)" </dev/zero | tr '\0' " ")"
+
+  cat <<EOF
+NAME
+       ${_SCRIPT_NAME}
+
+SYNOPSIS
+       ${_SCRIPT_NAME} [--skip-notify] [--sleep-time <seconds>] <job_url_or_name> [<job_num>]
+       ${SYNOP_INDENT} [--help] [--debug] [--verbose]
+
+EXAMPLES
+       ${_SCRIPT_NAME} \"https://ci.wlth.fr/job/api/584/\"
+EOF
+}
+##################################################################################################################################################
+
+################################################################# SCRIPTARGS #####################################################################
+while test $# -gt 0; do
+  case "$1" in
+    -h | --help)
+      _usage
+      exit 0
+      ;;
+    --debug)
+      shift
+      export debug_mode=true
+      ;;
+    --verbose)
+      shift
+      export verbose=true
+      ;;
+    --skip-notify)
+      shift
+      export SKIP_NOTIFY=true
+      ;;
+    --sleep-time)
+      shift
+      export SLEEP_TIME="$1"
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      echo "Unknown option: $1"
+      _usage
+      exit 1
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if test -z "${1:-}"; then
+  _usage "$@"
+  exit 1
+fi
+##################################################################################################################################################
+
+function _notify() {
+  echo "$@"
+  if check_true "${SKIP_NOTIFY-}"; then
+    return 0
+  fi
+  notify -t "${NOTIFY_TITLE:-jenkins_poll_build} | $JENKINS_BUILD_NAME" -m "$@"
+}
+
+function _print_build_url() {
+  echo "View the build at: ${JOB_URL}"
+}
+
+function _print_url_and_exit() {
+  if test -n "${GIT_PR_AFTER-}" && test "$1" -eq 0; then
+    log_and_run_spaced git "pr-${GIT_PR_AFTER}"
+  fi
+
+  _print_build_url
+  exit "$1"
+}
+function ltpylib_timing_format_millis() {
+  python -c '
+import sys
+from ltpylib.timing import format_millis
+print(format_millis(sys.argv[1]))
+' "$@"
+}
+function check_build_status() {
+  local api_status_code temp_build_name exit_val est_time_remaining curr_time_ms
+  if ! BUILD_API_OUT="$(jenkins_curl "$JENKINS_ENDPOINT" -w '\n%{http_code}')"; then
+    _notify "Error when hitting the Jenkins API: $JENKINS_ENDPOINT"
+    _print_url_and_exit 1
+  fi
+  api_status_code="$(echo "$BUILD_API_OUT" | tail -1)"
+  if test "$api_status_code" != 200; then
+    _notify "Error when hitting the Jenkins API (status $api_status_code): $JENKINS_ENDPOINT"
+    _print_url_and_exit 1
+  fi
+  BUILD_API_OUT="$(echo "$BUILD_API_OUT" | sed '$ d')"
+  if temp_build_name="$(echo "$BUILD_API_OUT" | jq '.fullDisplayName' | tr -d '"')"; then
+    if ! test -z "$temp_build_name"; then
+      JENKINS_BUILD_NAME="$temp_build_name"
+    fi
+  fi
+  BUILDING="$(echo "$BUILD_API_OUT" | jq '.building')"
+  if test "$BUILDING" != true && test "$BUILDING" != false; then
+    _notify "No building value when hitting the Jenkins API: $JENKINS_ENDPOINT"
+    _print_url_and_exit 1
+  fi
+  BUILD_RESULT="$(echo "$BUILD_API_OUT" | jq '.result' | tr -d '"')"
+  if test "$BUILDING" = false; then
+    NOTIFY_TITLE="${BUILD_RESULT}" _notify "Jenkins ${BUILD_RESULT}: $JENKINS_BUILD_NAME"
+    if test "$BUILD_RESULT" = "SUCCESS"; then
+      exit_val=0
+    else
+      exit_val=1
+    fi
+    _print_url_and_exit ${exit_val}
+  fi
+  BUILD_TIMESTAMP="$(echo "$BUILD_API_OUT" | jq '.timestamp')"
+  curr_time_ms="$(gdate '+%s%3N')"
+  BUILD_EST_DURATION="$(echo "$BUILD_API_OUT" | jq '.estimatedDuration')"
+  est_time_remaining='UNKNOWN'
+  time_running='UNKNOWN'
+  if ! test -z "${BUILD_TIMESTAMP-}"; then
+    BUILD_DURATION="$((curr_time_ms - BUILD_TIMESTAMP))"
+    time_running="$(ltpylib_timing_format_millis "$BUILD_DURATION")"
+  fi
+
+  if test -n "${BUILD_TIMESTAMP-}" && test -n "${BUILD_EST_DURATION-}"; then
+    BUILD_EST_TIME_REMAINING="$((BUILD_EST_DURATION - BUILD_DURATION))"
+    if test "$BUILD_EST_TIME_REMAINING" -gt 0; then
+      est_time_remaining="$(ltpylib_timing_format_millis "$BUILD_EST_TIME_REMAINING") (JENKINS)"
+    fi
+  fi
+
+  echo "[$(gdate '+%Y-%m-%d %T.%3N')] Sleeping poller for ${SLEEP_TIME}s. Build: ${JENKINS_BUILD_NAME} Elapsed: ${time_running}. Est Remaining: ${est_time_remaining}."
+  sleep "${SLEEP_TIME}"
+  TOTAL_SLEEP_TIME=$((TOTAL_SLEEP_TIME + SLEEP_TIME))
+  if test -n "${MAX_SLEEP_TIME-}" && test "$TOTAL_SLEEP_TIME" -ge "$MAX_SLEEP_TIME"; then
+    _notify "MAX_SLEEP_TIME exceeded, exiting: MAX_SLEEP_TIME=${MAX_SLEEP_TIME} TOTAL_SLEEP_TIME=${TOTAL_SLEEP_TIME}"
+    _print_url_and_exit 1
+  fi
+  check_build_status
+}
+
+function main() {
+  # shellcheck disable=SC1090
+  source "${HOME}/bin/.jenkins_script_setup.sh"
+  init_jenkins_vars "" "${1-}" "${2-}"
+
+  SLEEP_TIME="${SLEEP_TIME:-5}"
+  SKIP_NOTIFY="${SKIP_NOTIFY:-false}"
+
+  JENKINS_BUILD_NAME="${JOB_NAME} (${JOB_NUM})"
+
+  JENKINS_ENDPOINT="${JOB_URL}/api/json?tree=*"
+  BUILD_API_OUT=''
+  BUILDING=''
+  BUILD_RESULT=''
+  TOTAL_SLEEP_TIME=0
+
+  _print_build_url
+  check_build_status
+}
+
+main "$@"
