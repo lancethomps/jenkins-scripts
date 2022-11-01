@@ -33,7 +33,7 @@ def main():
     # noinspection PyBroadException
     try:
       response = maybe_throw(args.api.session.get(f"{args.log_text_url}?start={start}"))
-    except:
+    except Exception:
       response = maybe_throw(args.api.session.get(f"{args.log_text_url}?start={start}"))
 
     if response.text:
