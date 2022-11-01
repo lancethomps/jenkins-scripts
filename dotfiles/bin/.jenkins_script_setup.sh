@@ -120,17 +120,17 @@ function get_job_url_from_repo() {
     fi
   elif test "${job_url_type-}" = "${JOB_URL_TYPE_PR}"; then
     if ! job_name_for_type="$(git prs-latest-number)"; then
-      echo "FATAL Could not find last PR number: ${job_name_for_type}"
+      echo "FATAL Could not find last PR number: ${job_name_for_type}" >&2
       exit 1
     fi
     job_name_for_type="PR-${job_name_for_type}"
   elif test "${job_url_type-}" = "${JOB_URL_TYPE_TAG}"; then
     if ! job_name_for_type="$(git tags --simple | head -1)"; then
-      echo "FATAL Could not find last tag: ${job_name_for_type}"
+      echo "FATAL Could not find last tag: ${job_name_for_type}" >&2
       exit 1
     fi
   else
-    echo "FATAL job_url_type not recognized: ${job_url_type-}"
+    echo "FATAL job_url_type not recognized: ${job_url_type-}" >&2
     exit 1
   fi
 
