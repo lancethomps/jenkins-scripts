@@ -114,8 +114,12 @@ function get_job_url_from_repo() {
   top_job_name="upstart/job"
 
   if test -z "${job_url_type-}" || test "${job_url_type-}" = "${JOB_URL_TYPE_BRANCH}"; then
-    job_name_for_type="$(git current-branch)"
-    if git is-default-branch; then
+    if test -n "${job_name_override-}"; then
+      job_name_for_type="${job_name_override}"
+    else
+      job_name_for_type="$(git current-branch)"
+    fi
+    if test "${job_name_for_type}" = "$(git default-branch)"; then
       top_job_name="upstart_prod/job"
     fi
   elif test "${job_url_type-}" = "${JOB_URL_TYPE_PR}"; then
