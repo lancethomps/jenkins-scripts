@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # PYTHON_ARGCOMPLETE_OK
 # Originally found through https://gist.github.com/chirauki/e16a7e37e217ce0a345a122dc09bbac1
+import re
 
 import argparse
 import logging
@@ -12,6 +13,7 @@ from ltpylib.jenkins_api import create_default_jenkins_api, JenkinsApi
 from ltpylib.opts import BaseArgs, create_default_arg_parser, parse_args_and_init_others
 from ltpylib.requests_helper import maybe_throw
 
+FINISHED_REGEX = re.compile(r"Finished: ([A-Z]+)$", flags=re.MULTILINE)
 
 class ScriptArgs(BaseArgs):
 
@@ -19,6 +21,7 @@ class ScriptArgs(BaseArgs):
     super().__init__(args)
 
     self.build_url: str = args.build_url.removesuffix("/")
+    self.exit_status: bool = args.exit_status
     self.sleep_time: float = args.sleep_time
 
     self.api: JenkinsApi = create_default_jenkins_api()
@@ -28,6 +31,7 @@ class ScriptArgs(BaseArgs):
 def main():
   args = _parse_args()
 
+  full_log: str = ""
   start = 0
   while True:
     # noinspection PyBroadException
@@ -37,6 +41,9 @@ def main():
       response = maybe_throw(args.api.session.get(f"{args.log_text_url}?start={start}"))
 
     if response.text:
+      if args.exit_status:
+        full_log += response.text
+
       sys.stdout.write(response.text)
 
     x_text_size = response.headers.get("X-Text-Size")
@@ -59,10 +66,33 @@ def main():
 
     time.sleep(args.sleep_time)
 
+  if args.exit_status:
+    last_lines = "\n".join(full_log.splitlines()[-10:])
+    match = FINISHED_REGEX.search(last_lines)
+    result = match.group(1) if match else None
+    if result == "SUCCESS":
+      exit(0)
+    elif result:
+      logging.error("Exiting with code 1 due to failure: %s", result)
+      exit(1)
+
+    if "Finished:" not in last_lines:
+      logging.info("Couldn't find Finished: in log, checking API...")
+      build = args.api.build_from_full_url(args.build_url)
+      result = build.result
+      if result == "SUCCESS":
+        exit(0)
+      else:
+        logging.error("Exiting with code 1 due to failure: %s", result)
+        exit(1)
+
+    exit(1)
+
 
 def _parse_args() -> ScriptArgs:
   arg_parser = create_default_arg_parser()
 
+  arg_parser.add_argument("--exit-status", action=argparse.BooleanOptionalAction, default=True)
   arg_parser.add_argument("--sleep-time", type=float, default=1.0)
   arg_parser.add_argument("build_url")
 
