@@ -27,6 +27,9 @@ class ScriptArgs(BaseArgs):
     self.api: JenkinsApi = create_default_jenkins_api()
     self.log_text_url: str = self.api.url(f"{self.build_url}/logText/progressiveText")
 
+    if not self.build_url:
+      raise ValueError("build_url not supplied")
+
 
 def main():
   args = _parse_args()
